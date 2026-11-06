@@ -28,21 +28,27 @@ public static class WorkerMain
             var id = req["id"]?.DeepClone();
             var tool = req.Str("tool") ?? "";
             var args = req["args"] as JsonObject ?? new JsonObject();
-            JsonObject reply;
+            // The result is worked out first and the reply built once: a JSON node can only have one parent, so
+            // building the reply before the tool runs (then again in a catch) crashed the worker on every tool error.
+            JsonObject body;
             try
             {
-                reply = new JsonObject { ["id"] = id, ["result"] = tools.Run(tool, args).ToJson(sizes: true) };
+                body = new JsonObject { ["result"] = tools.Run(tool, args).ToJson(sizes: true) };
             }
             catch (ToolError e)
             {
-                reply = new JsonObject { ["id"] = id, ["error"] = new JsonObject { ["code"] = e.Code, ["hint"] = e.Hint } };
+                body = new JsonObject { ["error"] = new JsonObject { ["code"] = e.Code, ["hint"] = e.Hint } };
             }
             catch (Exception e)
             {
                 Console.Error.WriteLine(e);
-                reply = new JsonObject { ["id"] = id, ["error"] = new JsonObject { ["code"] = "internal", ["hint"] = e.Message } };
+                var inner = e is AggregateException { InnerException: { } ie } ? ie : e;
+                body = inner is ToolError te
+                    ? new JsonObject { ["error"] = new JsonObject { ["code"] = te.Code, ["hint"] = te.Hint } }
+                    : new JsonObject { ["error"] = new JsonObject { ["code"] = "internal", ["hint"] = inner.Message } };
             }
-            stdout.WriteLine(reply.ToJsonString());
+            body["id"] = id;
+            stdout.WriteLine(body.ToJsonString());
         }
         return 0;
     }

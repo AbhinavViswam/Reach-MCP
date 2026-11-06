@@ -11,6 +11,9 @@ namespace Reach.Worker;
 /// <summary>The core tools (spec/CONTRACT.md §5), run inside the UI worker one call at a time.</summary>
 internal sealed class Tools(bool backgroundOnly)
 {
+    private readonly Config _config = Config.Load();
+    private Deep.BrowserTool? _browser;
+    private readonly Deep.OfficeTool _office = new();
     private readonly ScreenState _state = new();
     private IntPtr _target;
     private Capture.Shot? _lastShot;
@@ -24,6 +27,16 @@ internal sealed class Tools(bool backgroundOnly)
         "find" => Find(a),
         "apps" => Apps(a),
         "device" => Device(),
+        _ when !_config.Allows(tool) => throw new ToolError("feature_off", $"'{tool}' is off in {Config.PathOf}; the user can turn it on and restart the agent"),
+        "office" => _office.Run(a),
+        "browser" => (_browser ??= new Deep.BrowserTool(_config)).Run(a),
+        "windows" => Deep.DeskTools.Windows(a, q => q == null ? Desktop.Info(Working()) : Desktop.Match(q) ?? throw new ToolError("not_found", $"no open window matches \"{q}\""), backgroundOnly),
+        "explorer" => Deep.DeskTools.Explorer(a, _config),
+        "files" => Deep.DeskTools.Files(a, _config),
+        "notifications" => Deep.DeskTools.Notifications(a),
+        "processes" => Deep.DeskTools.Processes(a),
+        "clipboard" => Deep.DeskTools.Clipboard(a),
+        "shell" => Deep.DeskTools.Shell(a),
         // Test hook (tests/WatchdogTest): a call that never answers, like a frozen app.
         "__hang" when Environment.GetEnvironmentVariable("REACH_TEST_HOOKS") == "1" => Hang(),
         _ => throw new ToolError("not_found", $"no tool '{tool}'"),
@@ -695,6 +708,7 @@ internal sealed class Tools(bool backgroundOnly)
         if (_target != IntPtr.Zero && Native.IsWindow(_target)) lines.Add($"working window {Desktop.IdOf(_target)} \"{ViewText.Clip(Native.Text(_target), 60)}\"");
         lines.Add(idle < 2_000 ? "user: using the mouse/keyboard right now" : $"user: idle for {idle / 1000} s");
         lines.Add(battery);
+        lines.Add(_config.Summary());
         lines.Add($"reach {Program.Version} · {(backgroundOnly ? "background only (never the real mouse/keyboard)" : "background first, real mouse/keyboard when needed")} · worker pid {Environment.ProcessId}");
         return ToolResult.Text(string.Join('\n', lines));
     }

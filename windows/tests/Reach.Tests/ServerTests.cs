@@ -94,6 +94,28 @@ public class ServerTests
         finally { server.Stop(); }
     }
 
+    private static string BuiltExe()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && dir.Name != "windows") dir = dir.Parent;
+        return Directory.GetFiles(Path.Combine(dir!.FullName, "src", "Reach", "bin", "Debug"), "reach.exe", SearchOption.AllDirectories).First();
+    }
+
+    [Fact]
+    public async Task WorkerErrorsComeBackAndTheWorkerLives()
+    {
+        using var host = new WorkerHost(Array.Empty<string>(), BuiltExe());
+        var bad = await host.CallAsync("no_such_tool", new JsonObject(), 10_000, CancellationToken.None);
+        Assert.True(bad.IsError);
+        Assert.StartsWith("error: not_found", bad.Content[0].Text);
+        var off = await host.CallAsync("files", new JsonObject { ["action"] = "read", ["path"] = @"C:\Windows\win.ini" }, 10_000, CancellationToken.None);
+        Assert.True(off.IsError);
+        Assert.Contains("blocked", off.Content[0].Text);
+        var dev = await host.CallAsync("device", new JsonObject(), 20_000, CancellationToken.None);
+        Assert.False(dev.IsError, dev.Content[0].Text);
+        Assert.Equal(0, host.Restarts);
+    }
+
     [Fact]
     public async Task WatchdogRestartsAHungWorker()
     {

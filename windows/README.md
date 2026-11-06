@@ -21,6 +21,19 @@ claude mcp add --transport http reach-windows http://127.0.0.1:8766/mcp --header
 Other switches: `--background-only` (never touch the real mouse/keyboard), `--lan` (HTTP on every network),
 `--selftest` (read the front window once and print it; changes nothing).
 
+## Abilities and safety
+
+`%LOCALAPPDATA%\Reach\config.json` (made on first run) turns abilities on or off: `office`, `explorer`, `files`
+(plus `fileFolders`), `browser` (plus `browserPort`, default 9222), `notifications`, `windows`, `processes`,
+`clipboard`, and `shell` (**off** by default). Restart the agent after changing it.
+
+Risky actions (sending mail, shell commands, killing a program, replacing or deleting files, launching a program
+file, showing hidden codes) pop up an Allow / Deny box first; no answer in 30 s means no. Answers are logged in
+`%LOCALAPPDATA%\Reach\approvals.log`, shell commands and output in `shell.log`.
+
+The browser tool needs Edge or Chrome with a debugging port. `browser` action `start` opens Edge with its own Reach
+profile (Chrome and Edge no longer allow the debugging port on your everyday profile).
+
 ## How it works
 
 - `reach.exe` is the MCP server. All UI Automation work runs in a second copy of itself (`reach.exe --worker`).

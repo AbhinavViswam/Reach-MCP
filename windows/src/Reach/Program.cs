@@ -37,10 +37,11 @@ public static class Program
             return 0;
         }
 
+        var config = Core.Config.Load();
         using var worker = new WorkerHost(backgroundOnly ? new[] { "--background-only" } : Array.Empty<string>());
         McpHandler? self = null;
         var handler = new McpHandler(
-            Catalog.Tools,
+            Catalog.Tools.Where(t => config.Allows(t.Name)).ToArray(),
             async (name, a, ct) =>
             {
                 var def = Catalog.Find(name)!;

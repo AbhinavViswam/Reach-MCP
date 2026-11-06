@@ -105,7 +105,118 @@ public static class Catalog
         new("device",
             "PC status: Windows version, monitors and scaling, front window, working window, whether the user is using the mouse/keyboard, battery, Reach mode.",
             Schema(new JsonObject())),
+        new("office",
+            "Word, Excel and Outlook (classic) directly, no clicking. excel: list, open, new, read (range or used range, tab-separated; formulas=true), " +
+            "write (values as rows; strings starting with = become formulas), save, sheets. word: list, open, new, read, append (style: normal, heading1-3, bullet, numbered), " +
+            "replace, save. outlook: inbox, read, draft (opens it for the user), send (asks the user).",
+            Schema(new JsonObject
+            {
+                ["app"] = P("string", "excel, word or outlook", "excel", "word", "outlook"),
+                ["action"] = P("string", "see the description"),
+                ["path"] = P("string", "open/save: file path"),
+                ["workbook"] = P("string", "excel: workbook name (default the active one)"),
+                ["sheet"] = P("string", "excel: sheet name (default the active one)"),
+                ["range"] = P("string", "excel: e.g. A1:D20 (write: the top-left cell is enough)"),
+                ["values"] = new JsonObject { ["type"] = "array", ["description"] = "excel write: rows, e.g. [[\"Item\",\"Price\"],[\"Tea\",2.5],[\"Total\",\"=SUM(B2:B2)\"]]" },
+                ["formulas"] = P("boolean", "excel read: formulas instead of values"),
+                ["document"] = P("string", "word: document name (default the active one)"),
+                ["text"] = P("string", "word append/replace text; outlook mail body"),
+                ["style"] = P("string", "word append: normal, heading1, heading2, heading3, bullet, numbered"),
+                ["find"] = P("string", "word replace: what to find"),
+                ["to"] = P("string", "outlook: recipient(s)"),
+                ["subject"] = P("string", "outlook: subject"),
+                ["id"] = P("string", "outlook read: id from inbox"),
+                ["limit"] = P("integer", "outlook inbox: how many"),
+                ["unread"] = P("boolean", "outlook inbox: unread only"),
+            }, "app", "action"), 60_000),
+        new("browser",
+            "Edge/Chrome pages through the browser's DevTools connection: real clicks and typing that leave the user's mouse alone, even in a background tab. " +
+            "start (opens Edge with its own Reach profile if no browser has the debugging port), tabs, open (url; new_tab), switch, close, read (page elements with stable ids; since), " +
+            "text (the page's words), click, type (target, text, submit), key, scroll, back, forward, reload, screenshot. Replies start with a checked verdict.",
+            Schema(new JsonObject
+            {
+                ["action"] = P("string", "see the description", "start", "tabs", "open", "switch", "close", "read", "text", "click", "type", "key", "scroll", "back", "forward", "reload", "screenshot"),
+                ["url"] = P("string", "open: the address"),
+                ["new_tab"] = P("boolean", "open: in a new tab"),
+                ["tab"] = P("string", "switch/close: tab id (t…) or words from its title"),
+                ["target"] = Any("click/type: element id from read, or {\"text\": \"Sign in\"}"),
+                ["text"] = P("string", "type: the text"),
+                ["mode"] = P("string", "type: replace (default) or append", "replace", "append"),
+                ["submit"] = P("boolean", "type: press Enter after"),
+                ["key"] = P("string", "key: Enter, Tab, Escape, ArrowDown, ArrowUp, PageDown, …"),
+                ["direction"] = P("string", "scroll: up or down", "up", "down"),
+                ["since"] = P("integer", "read: only changes after this version"),
+                ["bounds"] = P("boolean", "read: add element centres (page pixels)"),
+                ["browser"] = P("string", "start: edge (default) or chrome", "edge", "chrome"),
+            }, "action"), 45_000),
+        new("windows",
+            "Arrange windows: snap (left, right, top, bottom, quarters, center), move (x, y, width, height), maximize, minimize, restore, on_top, " +
+            "save_layout / restore_layout (by name), desktop_next / desktop_prev (virtual desktops). window = id or words from its title (default the working window).",
+            Schema(new JsonObject
+            {
+                ["action"] = P("string", "see the description", "snap", "move", "maximize", "minimize", "restore", "on_top", "save_layout", "restore_layout", "desktop_next", "desktop_prev"),
+                ["window"] = P("string", "window id (w…) or words from its title"),
+                ["to"] = P("string", "snap: where"),
+                ["x"] = P("integer", "move"), ["y"] = P("integer", "move"), ["width"] = P("integer", "move"), ["height"] = P("integer", "move"),
+                ["on"] = P("boolean", "on_top: true or false"),
+                ["name"] = P("string", "layout name (default 'default')"),
+            }, "action")),
+        new("explorer",
+            "File Explorer: list (open Explorer windows, their folders and selected files), open (show a folder or select a file), launch (open a file with its usual app; programs ask first).",
+            Schema(new JsonObject
+            {
+                ["action"] = P("string", "list, open or launch", "list", "open", "launch"),
+                ["path"] = P("string", "a path inside the allowed folders"),
+            }), 60_000),
+        new("files",
+            "Files in the allowed folders (Desktop, Documents, Downloads, Pictures, Videos, Music unless changed): list, find (pattern like *.pdf), read (text or a picture), " +
+            "write, move, copy, rename, delete (to the Recycle Bin; asks first). Paths like Documents\\notes.txt or full paths.",
+            Schema(new JsonObject
+            {
+                ["action"] = P("string", "list, find, read, write, move, copy, rename or delete", "list", "find", "read", "write", "move", "copy", "rename", "delete"),
+                ["path"] = P("string", "file or folder"),
+                ["to"] = P("string", "move/copy: new path; rename: new name"),
+                ["pattern"] = P("string", "list/find: e.g. *.pdf"),
+                ["text"] = P("string", "write: the text"),
+                ["append"] = P("boolean", "write: add to the end (replacing a file asks first)"),
+                ["limit"] = P("integer", "list/find: how many"),
+            }, "action"), 60_000),
+        new("notifications",
+            "Windows notifications from the system's own store: list (recent, optionally from one app) or wait (for a new one, e.g. a code). Codes are hidden unless reveal=true (asks).",
+            Schema(new JsonObject
+            {
+                ["action"] = P("string", "list or wait", "list", "wait"),
+                ["app"] = P("string", "only from this app"),
+                ["limit"] = P("integer", "list: how many"),
+                ["timeout_ms"] = P("integer", "wait: up to 60000"),
+                ["reveal"] = P("boolean", "show hidden codes (asks the user)"),
+            }), 70_000),
+        new("processes",
+            "Running programs: list (biggest memory first; query filters) or kill (by pid; asks first).",
+            Schema(new JsonObject
+            {
+                ["action"] = P("string", "list or kill", "list", "kill"),
+                ["query"] = P("string", "list: name or window title words"),
+                ["pid"] = P("integer", "kill: process id"),
+                ["limit"] = P("integer", "list: how many"),
+            }), 60_000),
+        new("clipboard",
+            "The PC clipboard: get or set text. Codes are hidden unless reveal=true (asks).",
+            Schema(new JsonObject
+            {
+                ["action"] = P("string", "get or set", "get", "set"),
+                ["text"] = P("string", "set: the text"),
+                ["reveal"] = P("boolean", "get: show hidden codes (asks the user)"),
+            }), 60_000),
+        new("shell",
+            "Run a PowerShell command. Every command is shown to the user and needs their Allow; all commands and results are logged on the PC.",
+            Schema(new JsonObject
+            {
+                ["command"] = P("string", "the PowerShell command"),
+                ["timeout_s"] = P("integer", "stop after this many seconds (default 30, max 120)"),
+            }, "command"), 170_000),
     };
+
 
     public static ToolDef? Find(string name) => Tools.FirstOrDefault(t => t.Name == name);
 

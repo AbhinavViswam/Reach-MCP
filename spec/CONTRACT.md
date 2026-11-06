@@ -133,7 +133,18 @@ changes v7 → v8
     add a contact, reply to a notification, press a notification button other than mark-read/snooze/mute,
     replace or delete a file, and `reveal=true`.
   - One-time codes and card numbers in SMS, notifications, files and the clipboard come back masked.
-- **Windows:** `windows`, `office`, `explorer`, `browser`, `shell`, `processes`, `undo` (P4/P6).
+- **Windows (built P4b):** `office` (Excel: list, open, new, read, write with formulas, save, sheets; Word: list,
+  open, new, read, append with built-in styles, replace, save; classic Outlook: inbox, read, draft, send),
+  `browser` (CDP: start, tabs, open, switch, close, read with stable ids, text, click, type, key, scroll, back,
+  forward, reload, screenshot; trusted input events, the user's mouse untouched), `windows` (snap, move, maximize,
+  minimize, restore, on_top, save/restore layouts, next/previous virtual desktop), `explorer` (list windows and
+  selections, open, launch), `files` (allowed folders only; delete goes to the Recycle Bin), `notifications` (list,
+  wait; from Windows' own store), `processes` (list, kill), `clipboard` (get, set), `shell` (PowerShell; off by
+  default). `undo` comes in P6.
+  - Switches live in `%LOCALAPPDATA%\Reach\config.json` (written with defaults on first run). Tools switched off
+    are not listed. Restart the agent after a change.
+  - Risky actions show an always-on-top Allow / Deny box (30 s, silence = no), logged in `approvals.log`: send
+    mail, every shell command, kill a process, replace or delete a file, launch a program file, `reveal=true`.
 
 ## 7. Versioning
 
