@@ -12,7 +12,8 @@ public sealed class McpHandler(
     Func<string, JsonObject, CancellationToken, Task<ToolResult>> run,
     string serverName,
     string serverVersion,
-    string instructions)
+    string instructions,
+    Func<ToolDef, bool>? listed = null)
 {
     public static readonly HashSet<string> Supported = new() { "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05" };
     public const string DefaultVersion = "2025-06-18";
@@ -36,7 +37,7 @@ public sealed class McpHandler(
         {
             "initialize" => Result(id, Initialize(p)),
             "ping" => Result(id, new JsonObject()),
-            "tools/list" => Result(id, new JsonObject { ["tools"] = new JsonArray(tools.Select(Describe).ToArray()) }),
+            "tools/list" => Result(id, new JsonObject { ["tools"] = new JsonArray(tools.Where(t => listed?.Invoke(t) ?? true).Select(Describe).ToArray()) }),
             "tools/call" => Result(id, await CallAndCountAsync(p)),
             "resources/list" => Result(id, new JsonObject { ["resources"] = new JsonArray() }),
             "prompts/list" => Result(id, new JsonObject { ["prompts"] = new JsonArray() }),

@@ -52,6 +52,10 @@ internal sealed class OfficeTool
     {
         var app = a.Str("app")?.ToLowerInvariant() ?? throw new ToolError("bad_args", "app is needed: excel, word or outlook");
         var action = a.Str("action") ?? throw new ToolError("bad_args", "action is needed");
+        // App rules count here too: a read-only or blocked Office app can't be changed through COM either.
+        var proc = app switch { "excel" => "excel", "word" => "winword", "outlook" => "outlook", _ => app };
+        if (Privacy.Rule(proc) == AppRule.Block) throw new ToolError("blocked_app", $"{app} is blocked by Reach privacy rules");
+        if (action is not ("list" or "read" or "sheets" or "inbox")) Privacy.RequireCanAct(proc, null, app);
         return app switch
         {
             "excel" => Com.Call(() => Excel(action, a), "Excel"),
@@ -68,6 +72,41 @@ internal sealed class OfficeTool
     }
 
     // ============================================================================================ Excel
+
+    /// <summary>A range's Formula (one value, or a 1-based 2-D array) as rows of strings, for undo.</summary>
+    private static JsonArray Grid(object? f)
+    {
+        var rows = new JsonArray();
+        if (f is object[,] g)
+        {
+            for (var i = g.GetLowerBound(0); i <= g.GetUpperBound(0); i++)
+            {
+                var row = new JsonArray();
+                for (var j = g.GetLowerBound(1); j <= g.GetUpperBound(1); j++) row.Add(g[i, j]?.ToString() ?? "");
+                rows.Add(row);
+            }
+        }
+        else rows.Add(new JsonArray(f?.ToString() ?? ""));
+        return rows;
+    }
+
+    /// <summary>Undo: puts [cells] back into [address] of an open workbook.</summary>
+    public static void PutCells(string bookPath, string sheetName, string address, JsonArray cells) => Com.Call<int>(() =>
+    {
+        dynamic xl = Com.Running("Excel.Application") ?? throw new ToolError("not_found", "Excel isn't open; open the workbook first");
+        dynamic? book = null;
+        foreach (dynamic b in xl.Workbooks) if (string.Equals((string)b.FullName, bookPath, StringComparison.OrdinalIgnoreCase)) book = b;
+        if (book == null) throw new ToolError("not_found", $"{Path.GetFileName(bookPath)} isn't open; open it first");
+        dynamic range = book.Worksheets[sheetName].Range[address];
+        var h = cells.Count;
+        var w = cells.Max(r => (r as JsonArray)?.Count ?? 1);
+        var grid = new object?[h, w];
+        for (var i = 0; i < h; i++)
+            for (var j = 0; j < w; j++)
+                grid[i, j] = cells[i] is JsonArray r && j < r.Count ? r[j]?.ToString() : null;
+        range.Formula = grid;
+        return 0;
+    }, "Excel");
 
     private ToolResult Excel(string action, JsonObject a)
     {
@@ -123,6 +162,7 @@ internal sealed class OfficeTool
                 }
                 dynamic start = sheet.Range[addr].Cells[1, 1];
                 dynamic target = sheet.Range[start, start.Offset[h - 1, w - 1]];
+                Undo.CellsBefore((string)book.FullName, (string)sheet.Name, (string)target.Address(false, false), Grid(target.Formula));
                 // Formula takes plain values too, so "=SUM(…)" cells become formulas and the rest stay values.
                 target.Formula = grid;
                 return ToolResult.Text($"verdict: done · wrote {h}×{w} cells at {target.Address(false, false)} in {sheet.Name} (not saved yet)");
@@ -278,7 +318,7 @@ internal sealed class OfficeTool
                 mail.To = to;
                 mail.Subject = subject;
                 mail.Body = text;
-                if (action == "send") { mail.Send(); return ToolResult.Text($"verdict: done · sent to {to}"); }
+                if (action == "send") { mail.Send(); Undo.CantUndo($"sent mail to {to}"); return ToolResult.Text($"verdict: done · sent to {to}"); }
                 mail.Save();
                 mail.Display(false);
                 return ToolResult.Text($"verdict: done · draft to {to} saved and opened; the user can check it and press Send");

@@ -10,8 +10,10 @@ reply shapes. If a platform can't do something, it says so in the reply (`not_su
 - Windows also speaks **stdio** (`reach.exe --stdio`) for clients that start servers themselves.
 - Every `/mcp` call needs `Authorization: Bearer <token>`. The token is made on the device and shown in its app.
 - Requests with an `Origin` header that is not `localhost` / `127.0.0.1` are refused (stops web pages calling it).
-- Default port **8765** on Android, **8766** on Windows. Android listens on `127.0.0.1` only (USB through
-  `adb forward`) unless the user turns Wi-Fi access on.
+- Default port **8765** on Android, **8766** on Windows. Both listen on `127.0.0.1` only (Android: USB through
+  `adb forward`) unless the user opens them up: **Tailscale** (this device plus the user's Tailscale devices,
+  `100.64.0.0/10` and `fd7a:115c:a1e0::/48`; everything else is turned away) or **Wi-Fi / LAN** (every network).
+  Android: switches in the app. Windows: settings › Connect, or `--tailscale` / `--lan`. Never an open public URL.
 - Protocol versions accepted: `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`. Unknown → `2025-06-18`.
 - Every tool call has a time limit. A call that runs out returns an error saying so; the server never hangs.
 
@@ -77,7 +79,7 @@ Every action waits for the screen to settle (screen events go quiet, max 3 s) an
 | `needs_foreground` | (Windows) Can only be done by taking the real mouse/keyboard; nothing was done. |
 | `unknown` | Can't tell (e.g. a game or canvas with no readable elements). |
 
-Errors (`stale_id`, `not_found`, `blocked_app`, `not_supported`, `timeout`, `no_access`) come back as MCP tool
+Errors (`stale_id`, `not_found`, `blocked_app`, `read_only_app`, `paused`, `feature_off`, `denied`, `not_supported`, `timeout`, `no_access`) come back as MCP tool
 errors (`isError: true`) with one line saying what to do next.
 
 Reply shape:
@@ -101,7 +103,8 @@ changes v7 → v8
 | `apps` | `action` = `list` / `open` / `current` / `info` / `close`; `name` or `package` | `open` takes a name ("whatsapp") or package. |
 | `device` | – | Screen on/locked, battery, network, display, Reach permissions, who has the screen. |
 | `doctor` | – | (P8) Finds setup problems and says how to fix each. |
-| `clipboard`, `notifications`, `files`, `flows`, `approve` | | Later phases (P4–P6). |
+| `flows` | `action` = `list` / `show` / `run` / `record_start` / `record_stop` / `save` / `delete`; `name`, `inputs`, `from_step` | See §5.2. Both platforms. |
+| `undo` | `action` = `list` / `last` / `to` / `checkpoint`; `target`, `name` | Windows only (§6.2). |
 
 ### 5.1 Seeing everything (observe modes)
 
@@ -117,6 +120,20 @@ changes v7 → v8
 - After any image, `act` accepts `{"x", "y", "in": "screenshot"}` in that image's pixels.
 - `device` reports a rough token count per tool so far (text ≈ 4 chars/token, images ≈ w×h/750).
 
+### 5.2 Flows (record once, replay for free)
+
+- `record_start name=…`, then the agent does the task. Every successful call is recorded except `observe`, `find`,
+  `device`, `flows`, `undo`; `act_batch` is stored as its single acts. `record_stop inputs={"to": "bob@x.com"}` turns
+  every argument containing that example into `{{to}}`.
+- Saved as `flows/NAME.json` on the device: `{name, description, platform, created, inputs: {name: example},
+  steps: [{tool, args, what, verdict}]}`. An element id is stored with its label: `"target": {"id": "e4k2", "text": "Send"}`.
+- `run name=… inputs={…}` replays with no model calls: the id first; if it is gone (`stale_id`/`not_found`), the
+  label; the new id is saved (self-healing). A step passes when it has no error and its verdict is `done`/`unknown`, or
+  the same as recorded (`optional: true` lets `no_effect` pass). The first failing step stops the run; the reply says
+  which, shows the screen, and `from_step=N` finishes after the agent fixes it.
+- Steps go through the same safety as the agent's calls: pause, switches, app rules, approvals, activity log
+  (`via: flow`).
+
 **Keys:** `back`, `home`, `recents`, `notifications`, `quick_settings`, `enter`, `backspace`, `lock`, `power_menu`
 (Android). Windows adds normal key names and combos like `ctrl+s`.
 
@@ -127,7 +144,8 @@ changes v7 → v8
   dismiss), `media` (play_pause, next, previous, stop, volume, now_playing), `links` (open URL/deep link, share,
   settings page), `files` (list, read, write, move, delete, recent_photos; only Download, Documents, Pictures, DCIM,
   Movies, Music, Reach), `clipboard` (get, set). Not yet: camera, location, app shortcuts.
-  - Abilities (notifications, SMS, calls, contacts, calendar, files) each have a switch in the app; a tool whose
+  - Abilities (notifications, SMS, calls, contacts, calendar, files, alarms, media, links, clipboard) each have a
+    switch in the app; a tool whose
     ability is off or lacks its Android permission is **not listed** (reconnect after turning one on).
   - Risky actions ask on the phone first (Allow / Deny notification, 30 s, silence = no): send SMS, place a call,
     add a contact, reply to a notification, press a notification button other than mark-read/snooze/mute,
@@ -141,10 +159,54 @@ changes v7 → v8
   selections, open, launch), `files` (allowed folders only; delete goes to the Recycle Bin), `notifications` (list,
   wait; from Windows' own store), `processes` (list, kill), `clipboard` (get, set), `shell` (PowerShell; off by
   default). `undo` comes in P6.
-  - Switches live in `%LOCALAPPDATA%\Reach\config.json` (written with defaults on first run). Tools switched off
-    are not listed. Restart the agent after a change.
-  - Risky actions show an always-on-top Allow / Deny box (30 s, silence = no), logged in `approvals.log`: send
-    mail, every shell command, kill a process, replace or delete a file, launch a program file, `reveal=true`.
+  - Switches are in the settings window (`reach.exe --settings`, tray icon), saved in
+    `%LOCALAPPDATA%\Reach\config.json`. They count from the next call; tools switched off are not listed
+    (reconnect to see new ones).
+  - Risky actions show an always-on-top Allow / Deny box, or ask on the phone (30 s, silence = no): send mail,
+    every shell command, kill a process, replace or delete a file, launch a program file, `reveal=true`.
+
+### 6.1 Safety (both platforms, built P5)
+
+- **App rules:** `allow`, `read_only`, `block`, set by the user. `read_only` apps can be read, scrolled and left
+  (back/home), and every other action returns `read_only_app`. User rules win over the built-in blocked list.
+- **Pause (kill switch):** while paused every call returns `paused` and a running action is stopped. Phone:
+  the app, the notification, the Quick Settings tile. PC: tray icon, Ctrl+Alt+Backspace, settings, `--pause`.
+- **Activity log:** every call (tool, short arguments, result line, ms) and every approval, one JSON line each in
+  `audit.jsonl` on the device. Codes are masked and values cut to 120 characters.
+- **Phone approves PC:** `POST /approve` on the phone with the phone's bearer token, body
+  `{"what", "detail", "from"}`, reply `{"allowed": true|false}` once the user answers (30 s, silence = false).
+
+### 6.2 Undo journal (Windows, built P6)
+
+Every change Reach makes on the PC is listed in `%LOCALAPPDATA%\Reach\undo\journal.jsonl` (ids `u1`, `u2`, …):
+
+| Change | Undo |
+|---|---|
+| file made / copied | moved to the Recycle Bin |
+| file replaced / appended | the copy saved before the change is put back |
+| file moved / renamed | moved back |
+| file deleted | put back from Reach's own copy (folders: from the Recycle Bin by hand) |
+| window snapped / moved / maximized / minimized / on top | back to its old place and state |
+| clipboard set | the old text |
+| Excel cells written | the old values and formulas |
+| mail sent, PowerShell run, program closed | listed as can't undo |
+
+`undo last`, `undo to target=u7` (that change and everything after it, newest first) or `target=<checkpoint name>`
+(everything after `undo checkpoint name=…`). If a file was changed by someone else since, the user is asked first.
+Backups over 200 MB aren't kept (that change is listed as can't undo); the newest 300 changes are kept.
+
+### 6.3 One agent, both devices (built P7)
+
+- **On the PC:** `phone` tool, `{tool, args, device}`. Runs any phone tool on a linked phone (settings › Phones:
+  name, address, token; several phones allowed, `device` picks one). `tool=tools` lists the phone's tools.
+- **On the phone:** `pc` tool, `{tool, args}`. Runs any PC tool on the linked PC (app › Your PC: address and token;
+  the PC runs `reach.exe --http`; over USB `adb reverse tcp:8766 tcp:8766`).
+- The call goes over that device's normal `POST /mcp` with its token, so **its** rules apply: its switches, app
+  rules, pause, approvals (asked on that device) and masking. The first line of the reply ends with
+  `· on phone <name>` / `· on the PC`, so the verdict still comes first.
+- Flows may hold steps on the other device; their element ids heal the same way.
+- Example (P7 goal): `phone tool=sms args={action: list}` (code masked) → `reveal=true` asks on the phone → `act
+  type` the code into the PC form.
 
 ## 7. Versioning
 

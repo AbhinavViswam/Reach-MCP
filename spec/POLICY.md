@@ -1,7 +1,9 @@
 # Reach policy file (v0.1)
 
-One format on both platforms. Stored on the device (`reach-policy.json`), edited from the app. The server reads it
-before every call. The model never sees it and can't change it.
+The same rules on both platforms, edited only on the device: the Reach app on Android (stored in its private
+settings), the settings window on Windows (`%LOCALAPPDATA%\Reach\config.json`). The server reads them before every
+call. The model never sees them and can't change them. The JSON below is the idea; each platform stores its own
+fields (see windows/README.md for the PC file).
 
 ```json
 {
@@ -38,11 +40,17 @@ before every call. The model never sees it and can't change it.
 | Rule | Meaning |
 |---|---|
 | `allow` | Read and act. Risky actions still ask. |
-| `read_only` | Can be read; every action is refused. |
+| `read_only` | Can be read, scrolled and left (back/home); every other action is refused (`read_only_app`). |
 | `block` | Never read, never acted on. The screen view shows only `app <name> is blocked by Reach privacy rules`. |
 
 Default blocked list: banking, payments/UPI, wallets, password managers and authenticator apps. Matched by package
-name or app name words (`bank`, `pay`, `wallet`, `password`, `authenticator`, `vault`). The user can change any of them.
+name or app name words (`bank`, `pay`, `wallet`, `password`, `authenticator`, `vault`). The user can change any of them: their own rule for an app wins.
+
+## Kill switch
+
+Pause stops a running action and refuses every call (`paused`) until the user resumes. Phone: app, notification,
+Quick Settings tile. PC: tray icon, Ctrl+Alt+Backspace, settings window, `reach.exe --pause`. Stop (phone) or Quit
+(PC tray) ends the server.
 
 ## Risk levels
 
@@ -53,8 +61,8 @@ name or app name words (`bank`, `pay`, `wallet`, `password`, `authenticator`, `v
 | `risky` | send message, pay, delete, install, call, change settings, shell | ask the user |
 | `blocked` | anything in a blocked app | deny |
 
-"Ask" shows an approval on the device (a sheet on the phone, a toast on Windows; later the phone can approve PC
-actions). No answer before `timeoutSeconds` = **no**.
+"Ask" shows an approval on the device (a notification on the phone, an always-on-top box on Windows), or on the
+phone for PC actions when the user turns that on (`POST /approve`; if the phone can't be reached the PC asks). No answer before `timeoutSeconds` = **no**.
 
 ## Masking (always before anything leaves the device)
 
@@ -65,4 +73,5 @@ actions). No answer before `timeoutSeconds` = **no**.
 
 ## Audit log
 
-Every call, its verdict and who approved it: `audit.jsonl` on the device, shown in the app. Nothing is sent anywhere.
+Every call, its result line and every approval: `audit.jsonl` on the device, shown in the app / settings window
+(Activity). Codes masked, values cut short, rotated at a few MB. Nothing is sent anywhere.

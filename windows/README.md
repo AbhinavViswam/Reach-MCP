@@ -18,21 +18,50 @@ reach.exe --token           # the token to send as "Authorization: Bearer <token
 claude mcp add --transport http reach-windows http://127.0.0.1:8766/mcp --header "Authorization: Bearer <token>"
 ```
 
-Other switches: `--background-only` (never touch the real mouse/keyboard), `--lan` (HTTP on every network),
+Other switches: `--settings`, `--pause`, `--resume`, `--background-only` (never touch the real mouse/keyboard), `--lan` (HTTP on every network),
 `--selftest` (read the front window once and print it; changes nothing).
 
 ## Abilities and safety
 
-`%LOCALAPPDATA%\Reach\config.json` (made on first run) turns abilities on or off: `office`, `explorer`, `files`
-(plus `fileFolders`), `browser` (plus `browserPort`, default 9222), `notifications`, `windows`, `processes`,
-`clipboard`, and `shell` (**off** by default). Restart the agent after changing it.
+**Settings window:** double-click `reach.exe`, run `reach.exe --settings`, or use the tray icon. It has:
 
-Risky actions (sending mail, shell commands, killing a program, replacing or deleting files, launching a program
-file, showing hidden codes) pop up an Allow / Deny box first; no answer in 30 s means no. Answers are logged in
-`%LOCALAPPDATA%\Reach\approvals.log`, shell commands and output in `shell.log`.
+- **Pause** (the kill switch): every call is refused and a running action is stopped at once. Also from the tray
+  icon, the hotkey **Ctrl+Alt+Backspace**, or `reach.exe --pause` / `--resume`. Works for every Reach on the PC.
+- **Abilities:** Office, Browser, Files, Window layout, File Explorer, Notifications, Programs, Clipboard,
+  PowerShell (**off** by default), and "Real mouse and keyboard" (off = background only).
+- **Folders** the files ability may use.
+- **App rules:** a program name (`excel`) or words in a window title (`hdfc bank`) → Allow / Read only / Block.
+  Read only = can be read and scrolled, never clicked or typed into. Your rules win over the built-in blocks
+  (password managers, authenticators, banking and PayPal windows).
+- **Approvals:** on this PC, or on your phone (Reach for Android, `POST /approve` with the phone's token). If the
+  phone can't be reached, this PC asks.
+- **Activity:** every call, its result and every approval (`%LOCALAPPDATA%\Reach\audit.jsonl`, codes masked).
+
+Changes are saved to `%LOCALAPPDATA%\Reach\config.json` and count from the next call; reconnect the agent to see
+tools you turned on. Risky actions (sending mail, shell commands, killing a program, replacing or deleting files,
+launching a program file, showing hidden codes) always ask; no answer in 30 s means no. Shell commands and their
+output also go to `shell.log`.
 
 The browser tool needs Edge or Chrome with a debugging port. `browser` action `start` opens Edge with its own Reach
 profile (Chrome and Edge no longer allow the debugging port on your everyday profile).
+
+## Your phone and remote use
+
+- **Phones** (settings › Phones): add a phone running Reach for Android by name, address and token. Your agent
+  here then has a `phone` tool that runs phone tools ("read the OTP on my phone, type it here"). The phone can
+  also answer this PC's approvals (settings › Approvals).
+- **The phone using this PC:** run `reach.exe --http`, copy the token (settings › Copy HTTP token) into the phone's
+  Reach app (Your PC). USB: `adb reverse tcp:8766 tcp:8766`.
+- **Away from home:** settings › Connect › "This PC and my Tailscale devices" (or `--tailscale`) lets only your
+  Tailscale devices in, plus this PC. "Every network" (`--lan`) is for trusted networks only.
+
+## Flows and undo
+
+- **Flows:** ask your agent to "record a flow" while it does a task; later "run the flow" replays it with no model
+  calls (`flows` tool). Saved in `%LOCALAPPDATA%\Reach\flows\`. Settings › Flows and undo lists and deletes them.
+- **Undo:** every change Reach makes (files, window places, clipboard, Excel cells) can be put back: ask your agent
+  to undo, or use Settings › "Undo Reach's last change". Sent mail, commands and closed programs can't be undone and
+  are listed as such.
 
 ## How it works
 

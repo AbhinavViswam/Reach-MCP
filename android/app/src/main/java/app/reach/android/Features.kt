@@ -34,7 +34,13 @@ enum class Feature(
     CALENDAR("calendar", "Calendar", "read and add events",
         listOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR), true),
     FILES("files", "Files", "Download, Documents, Pictures, DCIM and Reach folders only; deleting asks you",
-        emptyList(), false, Special.ALL_FILES);
+        emptyList(), false, Special.ALL_FILES),
+    ALARMS("alarms", "Alarms and timers", "set alarms and timers, see the next alarm", emptyList(), true),
+    MEDIA("media", "Media", "play, pause, skip and volume; what's playing (needs Notification access)",
+        emptyList(), true, Special.NOTIFICATION_ACCESS),
+    LINKS("links", "Links and sharing", "open web links, app links and settings pages; share text", emptyList(), true),
+    CLIPBOARD("clipboard", "Clipboard", "read and set the clipboard (codes hidden)", emptyList(), true),
+    PC("pc", "Your PC", "use Reach for Windows on your PC from this phone's agent (set it up under Your PC)", emptyList(), true);
 
     enum class Special { NONE, NOTIFICATION_ACCESS, ALL_FILES }
 

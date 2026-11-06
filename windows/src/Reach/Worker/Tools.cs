@@ -11,7 +11,9 @@ namespace Reach.Worker;
 /// <summary>The core tools (spec/CONTRACT.md §5), run inside the UI worker one call at a time.</summary>
 internal sealed class Tools(bool backgroundOnly)
 {
-    private readonly Config _config = Config.Load();
+    /// <summary>Read fresh each call: a switch changed in settings counts at once.</summary>
+    private static Config _config => Config.Current;
+    private bool BackgroundOnly => backgroundOnly || !_config.RealInput;
     private Deep.BrowserTool? _browser;
     private readonly Deep.OfficeTool _office = new();
     private readonly ScreenState _state = new();
@@ -27,16 +29,17 @@ internal sealed class Tools(bool backgroundOnly)
         "find" => Find(a),
         "apps" => Apps(a),
         "device" => Device(),
-        _ when !_config.Allows(tool) => throw new ToolError("feature_off", $"'{tool}' is off in {Config.PathOf}; the user can turn it on and restart the agent"),
+        _ when !_config.Allows(tool) => throw new ToolError("feature_off", $"'{tool}' is switched off; the user can turn it on in Reach settings (tray icon › Settings), then reconnect"),
         "office" => _office.Run(a),
         "browser" => (_browser ??= new Deep.BrowserTool(_config)).Run(a),
-        "windows" => Deep.DeskTools.Windows(a, q => q == null ? Desktop.Info(Working()) : Desktop.Match(q) ?? throw new ToolError("not_found", $"no open window matches \"{q}\""), backgroundOnly),
+        "windows" => Deep.DeskTools.Windows(a, q => q == null ? Desktop.Info(Working()) : Desktop.Match(q) ?? throw new ToolError("not_found", $"no open window matches \"{q}\""), BackgroundOnly),
         "explorer" => Deep.DeskTools.Explorer(a, _config),
         "files" => Deep.DeskTools.Files(a, _config),
         "notifications" => Deep.DeskTools.Notifications(a),
         "processes" => Deep.DeskTools.Processes(a),
         "clipboard" => Deep.DeskTools.Clipboard(a),
         "shell" => Deep.DeskTools.Shell(a),
+        "undo" => Deep.Undo.Run(a),
         // Test hook (tests/WatchdogTest): a call that never answers, like a frozen app.
         "__hang" when Environment.GetEnvironmentVariable("REACH_TEST_HOOKS") == "1" => Hang(),
         _ => throw new ToolError("not_found", $"no tool '{tool}'"),
@@ -241,6 +244,9 @@ internal sealed class Tools(bool backgroundOnly)
     private Outcome Judge(string kind, Live before, Target? t, string what, Func<(bool ok, string? how)> perform, string? expect = null)
     {
         if (before.Snap.BlockedApp != null) throw new ToolError("blocked_app", $"{before.Snap.BlockedApp} is blocked by Reach privacy rules");
+        // Read-only apps: scrolling (to read more) is fine, nothing else.
+        if (kind != "scroll") Privacy.RequireCanAct(before.Snap.App, before.Snap.Title, before.Snap.App ?? before.Snap.Title);
+        Pause.ThrowIfOn();
         // The target's own window is disabled under a dialog: the click would go nowhere (or to the dialog).
         if (t != null && t.Owner == before.Hwnd && before.Snap.PopupList.Count > 0 && !Native.IsWindowEnabled(before.Hwnd))
         {
@@ -268,12 +274,13 @@ internal sealed class Tools(bool backgroundOnly)
             $"verdict: needs_foreground · {what} needs the real mouse/keyboard, which is off (foreground=false or --background-only); nothing was done",
             live.Snap);
 
-    private bool ForegroundAllowed(JsonObject a) => !backgroundOnly && a.Bool("foreground") != false;
+    private bool ForegroundAllowed(JsonObject a) => !BackgroundOnly && a.Bool("foreground") != false;
 
     /// <summary>Real input on [hwnd]: waits for the user to pause, brings the window to front, checks the point is on it.</summary>
     private void PrepareReal(IntPtr hwnd, int? x = null, int? y = null)
     {
         Input.WaitForUserPause();
+        Pause.ThrowIfOn(); // the user may have paused while Reach waited for them
         if (!Desktop.Focus(hwnd)) Console.Error.WriteLine("could not bring the window to front");
         if (x is int px && y is int py)
         {
@@ -491,6 +498,7 @@ internal sealed class Tools(bool backgroundOnly)
         return Judge("scroll", live, null, what, () =>
         {
             Input.WaitForUserPause();
+        Pause.ThrowIfOn(); // the user may have paused while Reach waited for them
             Input.Wheel(x, y, notches, dir is "left" or "right");
             return (true, "mouse wheel");
         });
@@ -509,6 +517,7 @@ internal sealed class Tools(bool backgroundOnly)
         for (var i = 0; i < steps.Count; i++)
         {
             if (steps[i] is not JsonObject step) throw new ToolError("bad_args", "each action must be an object");
+            Pause.ThrowIfOn();
             Outcome o;
             try { o = Act(step); }
             catch (ToolError e)
@@ -659,7 +668,7 @@ internal sealed class Tools(bool backgroundOnly)
                 var name = a.Str("name") ?? throw new ToolError("bad_args", "switch needs name: a window id or words from its title");
                 var w = Desktop.Match(name) ?? throw new ToolError("not_found", $"no open window matches \"{name}\"; apps list shows them");
                 _target = w.Handle;
-                var brought = !backgroundOnly && Desktop.Focus(w.Handle);
+                var brought = !BackgroundOnly && Desktop.Focus(w.Handle);
                 var live = Read();
                 return ToolResult.Text($"verdict: done · working in {w.Id} \"{w.Title}\"{(brought ? " (brought to front)" : " (left where it is)")}\n" + ViewText.Full(live.Snap));
             }
@@ -709,7 +718,7 @@ internal sealed class Tools(bool backgroundOnly)
         lines.Add(idle < 2_000 ? "user: using the mouse/keyboard right now" : $"user: idle for {idle / 1000} s");
         lines.Add(battery);
         lines.Add(_config.Summary());
-        lines.Add($"reach {Program.Version} · {(backgroundOnly ? "background only (never the real mouse/keyboard)" : "background first, real mouse/keyboard when needed")} · worker pid {Environment.ProcessId}");
+        lines.Add($"reach {Program.Version} · {(BackgroundOnly ? "background only (never the real mouse/keyboard)" : "background first, real mouse/keyboard when needed")} · worker pid {Environment.ProcessId}");
         return ToolResult.Text(string.Join('\n', lines));
     }
 }

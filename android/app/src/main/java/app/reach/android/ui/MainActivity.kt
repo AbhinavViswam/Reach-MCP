@@ -91,7 +91,9 @@ private fun Home() {
     val ctx = LocalContext.current
     val access by Access.service.collectAsState()
     val status by ServerService.status.collectAsState()
+    val paused by Settings.paused.collectAsState()
     var wifi by remember { mutableStateOf(Settings.wifi) }
+    var tailscale by remember { mutableStateOf(Settings.tailscale) }
     var token by remember { mutableStateOf(Settings.token) }
     var showToken by remember { mutableStateOf(false) }
     val notifyAsk = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ServerService.start(ctx) }
@@ -132,17 +134,21 @@ private fun Home() {
             }
 
             // ---------------------------------------------------------------------------------- step 2
-            Section("2 · Server", ok = status.running, okText = "Running", offText = "Stopped") {
+            Section("2 · Server", ok = status.running && !paused, okText = "Running", offText = if (status.running) "Paused" else "Stopped") {
                 val line = when {
                     status.error != null -> status.error!!
+                    status.running && paused -> "Paused: every call is refused until you resume. Also from the notification or the Reach Quick Settings tile."
                     status.running -> "Port ${status.port} · ${status.calls} calls" + (status.lastCall?.let { " · last: $it" } ?: "")
                     else -> "Start it when you want your agent to use the phone. Stop it any time here or from the notification."
                 }
                 Text(line, style = MaterialTheme.typography.bodyMedium,
                     color = if (status.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (status.running) OutlinedButton(onClick = { ServerService.stop(ctx) }) { Text("Stop") }
-                    else Button(onClick = { start() }) { Text("Start") }
+                    if (status.running) {
+                        if (paused) Button(onClick = { Settings.setPaused(false, "app") }) { Text("Resume") }
+                        else Button(onClick = { Settings.setPaused(true, "app") }) { Text("Pause") }
+                        OutlinedButton(onClick = { ServerService.stop(ctx) }) { Text("Stop") }
+                    } else Button(onClick = { start() }) { Text("Start") }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -153,6 +159,20 @@ private fun Home() {
                     Switch(checked = wifi, onCheckedChange = {
                         wifi = it
                         Settings.wifi = it
+                        if (status.running) ServerService.restart(ctx)
+                    })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Tailscale access", style = MaterialTheme.typography.titleSmall)
+                        Text(if (tailscale) "Your own Tailscale devices with the token can connect, from anywhere." +
+                                (status.tailscaleAddress?.let { " This phone: $it" } ?: "")
+                            else "Off. Needs the Tailscale app; safer than Wi-Fi access when you're away from home.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = tailscale, onCheckedChange = {
+                        tailscale = it
+                        Settings.tailscale = it
                         if (status.running) ServerService.restart(ctx)
                     })
                 }
@@ -180,11 +200,19 @@ private fun Home() {
                     Mono(cmd.replace(token, if (showToken) token else "<token>"))
                     TextButton(onClick = { copy("Reach Wi-Fi setup", cmd) }) { Text("Copy command") }
                 }
+                Text("Approve PC actions here", style = MaterialTheme.typography.titleSmall)
+                Text("In Reach for Windows settings, turn on \"Ask on my phone\" and paste this token. Over USB keep " +
+                    "http://127.0.0.1:$port (after adb forward); over Wi-Fi use this phone's address.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             Abilities()
+            AppRules()
+            Activity()
+            Flows()
+            YourPc()
 
-            Text("Never read: password fields. Blocked: banking, payment, wallet, password and authenticator apps. " +
+            Text("Never read: password fields. Blocked unless you allow them: banking, payment, wallet, password and authenticator apps. " +
                 "Sending, calling, replying and deleting always ask you here first. Codes in messages are hidden. No telemetry.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.size(8.dp))
@@ -193,7 +221,7 @@ private fun Home() {
 }
 
 @Composable
-private fun Section(title: String, ok: Boolean?, okText: String = "", offText: String = "", body: @Composable () -> Unit) {
+internal fun Section(title: String, ok: Boolean?, okText: String = "", offText: String = "", body: @Composable () -> Unit) {
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),

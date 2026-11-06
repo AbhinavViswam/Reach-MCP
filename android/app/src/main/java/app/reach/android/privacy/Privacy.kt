@@ -1,8 +1,19 @@
 package app.reach.android.privacy
 
+import app.reach.android.mcp.ToolError
+
+enum class AppRule(val key: String, val label: String) {
+    ALLOW("allow", "Allow"), READ_ONLY("read_only", "Read only"), BLOCK("block", "Block");
+
+    companion object {
+        fun of(s: String?): AppRule = entries.firstOrNull { it.key == s } ?: ALLOW
+    }
+}
+
 /**
- * The privacy rules that apply from the first phase (spec/POLICY.md): banking, payment, wallet, password-manager and
- * authenticator apps are never read or acted on. The full per-app policy file and approvals come in P5.
+ * App rules (spec/POLICY.md): banking, payment, wallet, password-manager and authenticator apps are blocked out of
+ * the box; the user's own rules (set in the app, by package) win over that. Read only: the app can be read, and
+ * scrolled or left with back/home, but nothing in it is tapped or typed.
  */
 object Privacy {
     private val blockedPackages = setOf(
@@ -26,8 +37,11 @@ object Privacy {
 
     private val blockedWords = listOf("bank", "upi", "wallet", "password", "authenticator", "vault", "2fa", "otp")
 
-    /** [label]: the app's name as the user sees it, when known. */
-    fun isBlocked(pkg: String?, label: String? = null): Boolean {
+    /** The user's rules, package → rule. Loaded by Settings; empty in unit tests. */
+    @Volatile var userRules: Map<String, AppRule> = emptyMap()
+
+    /** Blocked out of the box (before the user's rules). [label]: the app's name as the user sees it, when known. */
+    fun builtinBlocked(pkg: String?, label: String? = null): Boolean {
         if (pkg.isNullOrEmpty()) return false
         if (pkg in blockedPackages) return true
         val p = pkg.lowercase()
@@ -35,5 +49,23 @@ object Privacy {
         if (blockedWords.any { w -> p.split('.').any { part -> part.contains(w) } }) return true
         val l = label?.lowercase() ?: return false
         return blockedWords.any { l.contains(it) }
+    }
+
+    fun rule(pkg: String?, label: String? = null, user: Map<String, AppRule> = userRules): AppRule {
+        if (pkg.isNullOrEmpty()) return AppRule.ALLOW
+        user[pkg]?.let { return it }
+        return if (builtinBlocked(pkg, label)) AppRule.BLOCK else AppRule.ALLOW
+    }
+
+    fun isBlocked(pkg: String?, label: String? = null): Boolean = rule(pkg, label) == AppRule.BLOCK
+
+    /** For actions: refuses in blocked and read-only apps. */
+    fun requireCanAct(pkg: String?, name: String? = pkg) {
+        when (rule(pkg)) {
+            AppRule.BLOCK -> throw ToolError("blocked_app", "$name is blocked by Reach privacy rules")
+            AppRule.READ_ONLY -> throw ToolError("read_only_app",
+                "$name is read-only in Reach: it can be read but not used. The user can change this in the Reach app (App rules)")
+            AppRule.ALLOW -> {}
+        }
     }
 }

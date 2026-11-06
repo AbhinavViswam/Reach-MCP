@@ -99,6 +99,17 @@ public sealed class WorkerHost(string[] workerArgs, string? exe = null) : IDispo
         return ToolResult.Error(err?.Str("code") ?? "internal", err?.Str("hint") ?? "worker error");
     }
 
+    /// <summary>A call is running in the worker right now.</summary>
+    public bool Busy => !_pending.IsEmpty;
+
+    /// <summary>The kill switch: fails what is running with [reason] and kills the worker (a fresh one starts next call).</summary>
+    public void Stop(ToolError reason)
+    {
+        foreach (var (id, tcs) in _pending)
+            if (_pending.TryRemove(id, out _)) tcs.TrySetException(reason);
+        Restart();
+    }
+
     public void Restart()
     {
         lock (_lock)

@@ -7,6 +7,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -31,6 +36,10 @@ class HttpServer(
     private val port: Int,
     /** false: 127.0.0.1 only (USB through adb forward). true: every network the phone is on. */
     private val allNetworks: Boolean,
+    /** POST /approve from Reach for Windows: (what, detail, from) → did the user allow it. Null: not offered. */
+    private val approve: (suspend (String, String, String) -> Boolean)? = null,
+    /** Who may connect (Tailscale mode: this phone and Tailscale devices). Null: everyone the socket accepts. */
+    private val allow: ((InetAddress) -> Boolean)? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var socket: ServerSocket? = null
@@ -48,6 +57,7 @@ class HttpServer(
         acceptJob = scope.launch {
             while (isActive) {
                 val c = try { s.accept() } catch (e: SocketException) { break }
+                if (allow != null && !allow.invoke(c.inetAddress)) { runCatching { c.close() }; continue }
                 launch { serve(c) }
             }
         }
@@ -80,7 +90,7 @@ class HttpServer(
     private suspend fun route(req: Request): Response {
         val path = req.path.substringBefore('?')
         if (path == "/health" && req.method == "GET") return Response(200, "text/plain", "reach ok")
-        if (path != "/mcp") return Response(404, "text/plain", "not found")
+        if (path != "/mcp" && path != "/approve") return Response(404, "text/plain", "not found")
 
         // A web page in a browser on this device must not be able to call the server (DNS rebinding).
         req.header("origin")?.let { origin ->
@@ -91,6 +101,7 @@ class HttpServer(
             return Response(401, "application/json", """{"error":"missing or wrong Reach token"}""",
                 extra = mapOf("WWW-Authenticate" to "Bearer"))
         }
+        if (path == "/approve") return approveRoute(req)
         return when (req.method) {
             "POST" -> {
                 val reply = handler.handle(req.body.toString(Charsets.UTF_8))
@@ -101,6 +112,18 @@ class HttpServer(
             "DELETE" -> Response(200, "text/plain", "")
             else -> Response(405, "text/plain", "use POST", extra = mapOf("Allow" to "POST"))
         }
+    }
+
+    /** The PC asks the user on this phone (spec/POLICY.md "phone approves PC"). Same token as /mcp. */
+    private suspend fun approveRoute(req: Request): Response {
+        val ask = approve ?: return Response(404, "text/plain", "not found")
+        if (req.method != "POST") return Response(405, "text/plain", "use POST", extra = mapOf("Allow" to "POST"))
+        val o = runCatching { Json.parseToJsonElement(req.body.toString(Charsets.UTF_8)) as JsonObject }.getOrNull()
+            ?: return Response(400, "application/json", "{\"error\":\"bad json\"}")
+        fun s(k: String) = (o[k] as? JsonPrimitive)?.content
+        val what = s("what")?.take(200) ?: return Response(400, "application/json", "{\"error\":\"what is needed\"}")
+        val allowed = try { ask(what, s("detail").orEmpty().take(1000), s("from")?.take(60) ?: "another device") } catch (e: ToolError) { false }
+        return Response(200, "application/json", buildJsonObject { put("allowed", allowed) }.toString())
     }
 
     private fun authorized(header: String?): Boolean {
@@ -170,7 +193,7 @@ class HttpServer(
     }
 
     private fun reason(code: Int) = when (code) {
-        200 -> "OK"; 202 -> "Accepted"; 401 -> "Unauthorized"; 403 -> "Forbidden"
+        200 -> "OK"; 202 -> "Accepted"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"
         404 -> "Not Found"; 405 -> "Method Not Allowed"; else -> "Error"
     }
 

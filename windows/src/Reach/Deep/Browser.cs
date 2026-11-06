@@ -326,6 +326,9 @@ internal sealed class BrowserTool(Config config)
     {
         var (before, index) = ReadPage();
         if (before.BlockedApp != null) throw new ToolError("blocked_app", $"{before.BlockedApp} is blocked by Reach privacy rules");
+        // Read-only sites: reading, scrolling and moving between pages only.
+        if (action is "click" or "type" or "key") Privacy.RequireCanAct(before.App, before.Title, before.App ?? "this page");
+        Pause.ThrowIfOn();
         var ws = Ws(WorkingTab());
         Element? target = null;
         string what;

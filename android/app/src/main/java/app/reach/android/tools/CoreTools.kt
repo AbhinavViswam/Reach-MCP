@@ -224,6 +224,7 @@ class ActBatchTool : Tool {
         var last: Screen.Outcome? = null
         for ((i, step) in steps.withIndex()) {
             val o = try {
+                if (app.reach.android.Settings.paused.value) throw ToolError("paused", app.reach.android.privacy.Approvals.PAUSED_HINT)
                 actOnce(step)
             } catch (e: ToolError) {
                 lines += "step ${i + 1}: error ${e.code} · ${e.hint}"

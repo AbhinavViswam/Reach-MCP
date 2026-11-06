@@ -166,30 +166,3 @@ public sealed class ScreenState(int keepViews = 8, int keepIds = 3000)
     public Snapshot? Latest() { lock (_lock) return _views.Last?.Value; }
     public Element? Known(string id) { lock (_lock) return _known.GetValueOrDefault(id); }
 }
-
-/// <summary>
-/// Privacy rules from the first phase (spec/POLICY.md): password managers and banking windows are never read or
-/// acted on. The full policy file and approvals come in P5.
-/// </summary>
-public static class Privacy
-{
-    private static readonly HashSet<string> BlockedProcesses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "1password", "bitwarden", "keepass", "keepassxc", "lastpass", "dashlane", "enpass", "roboform", "nordpass",
-        "proton pass", "protonpass", "authy desktop", "authy",
-    };
-
-    private static readonly string[] BlockedTitleWords =
-    {
-        "net banking", "netbanking", "online banking", "internet banking", "bank login", "paypal", "password manager",
-        "bitwarden", "1password", "keepass", "lastpass", "authenticator",
-    };
-
-    public static bool IsBlocked(string? process, string? title = null)
-    {
-        if (!string.IsNullOrEmpty(process) && BlockedProcesses.Contains(process)) return true;
-        if (string.IsNullOrEmpty(title)) return false;
-        var t = title.ToLowerInvariant();
-        return BlockedTitleWords.Any(t.Contains);
-    }
-}

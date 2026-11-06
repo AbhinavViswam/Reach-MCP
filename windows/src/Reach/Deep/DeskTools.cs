@@ -51,6 +51,7 @@ internal static class DeskTools
             return ToolResult.Text($"verdict: done · switched to the {(action == "desktop_next" ? "next" : "previous")} virtual desktop");
         }
         var w = pick(a.Str("window"));
+        if (action is "snap" or "move" or "maximize" or "minimize" or "restore" or "on_top") Undo.WindowBefore(w.Handle, $"{action} \"{w.Title}\"");
         switch (action)
         {
             case "snap":
@@ -84,7 +85,7 @@ internal static class DeskTools
     }
 
     /// <summary>Moves so the window's visible edges (not its invisible resize border) land on [to].</summary>
-    private static void Move(IntPtr h, Box to)
+    internal static void Move(IntPtr h, Box to)
     {
         if (IsIconic(h) || IsZoomed(h)) ShowWindow(h, SW_RESTORE);
         GetWindowRect(h, out var full);
@@ -230,7 +231,10 @@ internal static class DeskTools
                 var append = a.Bool("append") == true;
                 if (File.Exists(f) && !append) Approve.Require("replace a file", $"{f} ({Size(new FileInfo(f).Length)}) will be overwritten.");
                 Directory.CreateDirectory(Path.GetDirectoryName(f)!);
+                var existed = File.Exists(f);
+                var backup = existed ? Journal.Backup(f) : null;
                 if (append) File.AppendAllText(f, text); else File.WriteAllText(f, text);
+                Undo.FileWritten(f, existed, backup);
                 return ToolResult.Text($"verdict: done · {(append ? "added to" : "wrote")} {f}");
             }
             case "move" or "copy" or "rename":
@@ -242,6 +246,7 @@ internal static class DeskTools
                 if (File.Exists(from)) { if (action == "copy") File.Copy(from, to); else File.Move(from, to); }
                 else if (Directory.Exists(from) && action != "copy") Directory.Move(from, to);
                 else throw new ToolError("not_found", $"{from} not found (folders can be moved, not copied)");
+                if (action == "copy") Undo.FileCopied(to); else Undo.FileMoved(from, to);
                 return ToolResult.Text($"verdict: done · {action} → {to}");
             }
             case "delete":
@@ -252,8 +257,17 @@ internal static class DeskTools
                 Approve.Require("move to the Recycle Bin", f);
                 var recycle = Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin;
                 var ui = Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs;
-                if (File.Exists(f)) Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(f, ui, recycle);
-                else if (Directory.Exists(f)) Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(f, ui, recycle);
+                if (File.Exists(f))
+                {
+                    var backup = Journal.Backup(f);
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(f, ui, recycle);
+                    Undo.FileDeleted(f, backup, folder: false);
+                }
+                else if (Directory.Exists(f))
+                {
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(f, ui, recycle);
+                    Undo.FileDeleted(f, null, folder: true);
+                }
                 else throw new ToolError("not_found", $"{f} not found");
                 return ToolResult.Text($"verdict: done · {f} is in the Recycle Bin (restore it from there if needed)");
             }
@@ -369,6 +383,7 @@ internal static class DeskTools
                     throw new ToolError("blocked", "Reach won't end itself or system processes");
                 Approve.Require($"force-close {name}", $"{name} (pid {pid}){(p.MainWindowTitle.Length > 0 ? " · " + p.MainWindowTitle : "")} will be closed. Unsaved work in it is lost.");
                 p.Kill(entireProcessTree: true);
+                Undo.CantUndo($"closed {name} (pid {pid})");
                 return ToolResult.Text($"verdict: done · ended {name}");
             }
             default:
@@ -387,7 +402,12 @@ internal static class DeskTools
         {
             try
             {
-                if (action == "set") System.Windows.Forms.Clipboard.SetText(a.Str("text") ?? throw new ToolError("bad_args", "set needs text"));
+                if (action == "set")
+                {
+                    var text = a.Str("text") ?? throw new ToolError("bad_args", "set needs text");
+                    Undo.ClipboardBefore(System.Windows.Forms.Clipboard.ContainsText() ? System.Windows.Forms.Clipboard.GetText() : null);
+                    System.Windows.Forms.Clipboard.SetText(text);
+                }
                 else got = System.Windows.Forms.Clipboard.ContainsText() ? System.Windows.Forms.Clipboard.GetText() : null;
             }
             catch (Exception e) { err = e; }
@@ -419,6 +439,7 @@ internal static class DeskTools
         var cmd = a.Str("command") ?? throw new ToolError("bad_args", "command is needed");
         var timeout = Math.Clamp(a.Int("timeout_s") ?? 30, 1, 120);
         Approve.Require("run a PowerShell command", cmd);
+        Undo.CantUndo("ran PowerShell: " + (cmd.Length > 100 ? cmd[..100] + "…" : cmd));
         var psi = new ProcessStartInfo("powershell.exe", "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -")
         {
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,

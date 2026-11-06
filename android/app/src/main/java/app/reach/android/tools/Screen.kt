@@ -1,5 +1,8 @@
 package app.reach.android.tools
 
+import app.reach.android.Settings
+import app.reach.android.privacy.Approvals
+import app.reach.android.privacy.Privacy
 import android.view.accessibility.AccessibilityNodeInfo
 import app.reach.android.access.Access
 import app.reach.android.mcp.ToolError
@@ -138,6 +141,10 @@ object Screen {
         perform: suspend () -> Boolean,
     ): Outcome {
         if (before.snap.blockedApp != null) throw ToolError("blocked_app", "${before.snap.blockedApp} is blocked by Reach privacy rules")
+        // Read-only apps: reading more (scroll) and leaving (back, home…) are fine; nothing else.
+        val leaving = kind == "key" && what.removePrefix("key ") in NAV_KEYS || what.startsWith("go home")
+        if (kind != "scroll" && !leaving) Privacy.requireCanAct(before.snap.app)
+        if (Settings.paused.value) throw ToolError("paused", Approvals.PAUSED_HINT)
         if (target != null) {
             Actor.coveringWindow(target.element, target.x, target.y, gesture = gesture || target.node == null)?.let { w ->
                 val title = w.title?.toString() ?: w.root?.packageName?.toString() ?: "a window"
@@ -164,4 +171,6 @@ object Screen {
         }
         return Outcome(verdict, "$head\n$body", after.snap)
     }
+
+    private val NAV_KEYS = setOf("back", "home", "recents", "notifications", "quick_settings", "lock")
 }

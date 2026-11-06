@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import app.reach.android.R
+import app.reach.android.Settings
 import app.reach.android.mcp.ToolError
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
 object Approvals {
     private const val CHANNEL = "approvals"
     private const val TIMEOUT_MS = 30_000L
+    const val PAUSED_HINT = "the user paused Reach on the phone; nothing was done. Wait for them to resume it, don't retry now"
     private val waiting = ConcurrentHashMap<Int, CompletableDeferred<Boolean>>()
     private val next = AtomicInteger(1000)
 
@@ -29,7 +31,9 @@ object Approvals {
         if (!ask(context, what, detail)) throw ToolError("denied", "the user did not allow: $what (or didn't answer within 30 s); don't retry unless they ask")
     }
 
-    suspend fun ask(context: Context, what: String, detail: String): Boolean {
+    /** [from]: who asks; another device (Reach for Windows) names itself, so the user knows where it will happen. */
+    suspend fun ask(context: Context, what: String, detail: String, from: String? = null): Boolean {
+        if (Settings.paused.value) throw ToolError("paused", PAUSED_HINT)
         val id = next.getAndIncrement()
         val answer = CompletableDeferred<Boolean>()
         waiting[id] = answer
@@ -44,7 +48,7 @@ object Approvals {
         )
         val n = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_fg)
-            .setContentTitle("Allow your agent to $what?")
+            .setContentTitle(if (from == null) "Allow your agent to $what?" else "Allow your agent on $from to $what?")
             .setContentText(detail)
             .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -58,6 +62,7 @@ object Approvals {
         val ok = withTimeoutOrNull(TIMEOUT_MS) { answer.await() } ?: false
         waiting.remove(id)
         nm.cancel(id)
+        Audit.approval(what, detail, ok, from ?: "this phone")
         return ok
     }
 

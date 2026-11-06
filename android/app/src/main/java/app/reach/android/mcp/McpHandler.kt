@@ -6,6 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -29,8 +32,15 @@ class McpHandler(
     private val serverVersion: String,
     private val instructions: String,
     /** Told about each call when it ends: tool name, whether it failed, milliseconds (for the app's activity line). */
-    private val onCall: (String, Boolean, Long) -> Unit = { _, _, _ -> },
+    private val onCall: (Call) -> Unit = {},
+    /** Runs before every call; throws a ToolError to refuse it (the kill switch). */
+    private val gate: (String) -> Unit = {},
 ) {
+    class Call(val name: String, val args: JsonObject, val result: ToolResult, val ms: Long)
+
+    /** The kill switch: stops whatever is running now (the agent gets an error for it). */
+    fun stopAll() = work.coroutineContext.cancelChildren()
+
     private val byName = tools.associateBy { it.name }
 
     /** What each tool's replies cost the agent so far (device shows it; spec/TASKS.md measures it). */
@@ -96,11 +106,20 @@ class McpHandler(
             ?: return render(ToolResult.error("not_found", "no tool named '$name'; tools: ${byName.keys.joinToString()}"))
         val args = params["arguments"] as? JsonObject ?: JsonObject(emptyMap())
         val started = System.currentTimeMillis()
-        val job = work.async { tool.call(args) }
         val r = try {
-            withTimeout(tool.timeoutMs) { job.await() }
+            gate(tool.name)
+            val job = work.async { tool.call(args) }
+            try {
+                withTimeout(tool.timeoutMs) { job.await() }
+            } catch (e: TimeoutCancellationException) {
+                job.cancel()
+                throw e
+            } catch (e: CancellationException) {
+                // Cancelled by stopAll (the user paused), not by the agent hanging up.
+                if (job.isCancelled && currentCoroutineContext().isActive) throw ToolError("paused", "the user paused Reach; the running action was stopped")
+                throw e
+            }
         } catch (e: TimeoutCancellationException) {
-            job.cancel()
             ToolResult.error("timeout", "${tool.name} took longer than ${tool.timeoutMs / 1000} s and was stopped; observe, then try again")
         } catch (e: CancellationException) {
             throw e
@@ -110,7 +129,7 @@ class McpHandler(
             ToolResult.error("internal", (e.message ?: e.javaClass.simpleName).take(300))
         }
         tokens.add(tool.name, r)
-        onCall(tool.name, r.isError, System.currentTimeMillis() - started)
+        onCall(Call(tool.name, args, r, System.currentTimeMillis() - started))
         return render(r)
     }
 

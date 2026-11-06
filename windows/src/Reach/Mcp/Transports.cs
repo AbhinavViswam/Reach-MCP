@@ -40,7 +40,7 @@ public static class StdioServer
 /// MCP Streamable HTTP, the part Reach needs (spec/CONTRACT.md §1), the same as Reach for Android's: POST /mcp,
 /// JSON reply, bearer token, Origin check, GET /health. Plain sockets, so no URL reservations or admin rights.
 /// </summary>
-public sealed class HttpServer(McpHandler handler, Func<string> token, int port, bool allNetworks)
+public sealed class HttpServer(McpHandler handler, Func<string> token, int port, bool allNetworks, Func<IPAddress, bool>? allow = null)
 {
     private TcpListener? _listener;
     private readonly CancellationTokenSource _stop = new();
@@ -67,6 +67,8 @@ public sealed class HttpServer(McpHandler handler, Func<string> token, int port,
             TcpClient c;
             try { c = await _listener!.AcceptTcpClientAsync(_stop.Token); }
             catch { break; }
+            // Tailscale mode listens everywhere but only lets this PC and Tailscale devices in.
+            if (allow != null && c.Client.RemoteEndPoint is IPEndPoint ep && !allow(ep.Address)) { c.Dispose(); continue; }
             _ = Task.Run(() => Serve(c));
         }
     }
