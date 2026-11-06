@@ -1,0 +1,18 @@
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/
+*.apk
+*.aab
+# Windows (.NET)
+windows/**/bin/
+windows/**/obj/
+windows/publish/
+*.user
+.vs/
+# Bench results and logs
+bench/raw/
+*.log
+.idea/

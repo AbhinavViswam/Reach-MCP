@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A ring with a dot reaching out of it: the agent reaching the device. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FF5EE6C8" android:strokeWidth="6" android:strokeLineCap="round"
+        android:pathData="M68,40 A20,20 0 1,0 72,54" />
+    <path android:fillColor="#FF5EE6C8" android:pathData="M74,34 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M54,54 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+</vector>

@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Reach</string>
+    <string name="access_description">Lets your own AI agent (connected with your Reach token) read this screen and tap, type and scroll for you. Reach only reads the screen when an agent call asks. Password fields are never read, and banking and password apps are blocked.</string>
+</resources>
