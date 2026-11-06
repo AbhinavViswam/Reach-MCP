@@ -71,11 +71,16 @@ public static class Fence
         if (Path.IsPathRooted(p)) full = Path.GetFullPath(p);
         else
         {
-            // "Documents\a.txt": the first part names an allowed folder.
+            // "Documents\a.txt": the first part names an allowed folder. With two of that name (OneDrive and the
+            // plain one), the one that has the file, else the one with its folder, else the first.
             var first = p.Split('\\')[0];
-            var root = allowed.FirstOrDefault(a => string.Equals(Path.GetFileName(a.TrimEnd('\\')), first, StringComparison.OrdinalIgnoreCase))
-                       ?? throw new ToolError("blocked", $"Reach only works in {string.Join(", ", allowed.Select(a => Path.GetFileName(a.TrimEnd('\\'))))}");
-            full = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(root.TrimEnd('\\'))!, p));
+            var roots = allowed.Where(a => string.Equals(Path.GetFileName(a.TrimEnd('\\')), first, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (roots.Count == 0)
+                throw new ToolError("blocked", $"Reach only works in {string.Join(", ", allowed.Select(a => Path.GetFileName(a.TrimEnd('\\'))).Distinct())}");
+            var options = roots.Select(r => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(r.TrimEnd('\\'))!, p))).ToList();
+            full = options.FirstOrDefault(o => File.Exists(o) || Directory.Exists(o))
+                   ?? options.FirstOrDefault(o => Directory.Exists(Path.GetDirectoryName(o)))
+                   ?? options[0];
         }
         foreach (var a in allowed)
         {

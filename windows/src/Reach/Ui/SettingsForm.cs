@@ -28,7 +28,7 @@ internal sealed class SettingsForm : Form
     public SettingsForm()
     {
         Text = "Reach settings";
-        Icon = Theme.MakeIcon(false);
+        Icon = Theme.AppIcon();
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(600, 760);
@@ -460,7 +460,7 @@ internal sealed class ActivityForm : Form
     public ActivityForm()
     {
         Text = "Reach activity";
-        Icon = Theme.MakeIcon(false);
+        Icon = Theme.AppIcon();
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(900, 560);
@@ -533,6 +533,8 @@ internal sealed class Snapshot : Form
             Directory.CreateDirectory(dir);
             Save(new SettingsForm(), Path.Combine(dir, "settings.png"), 2300);
             Save(new ActivityForm(), Path.Combine(dir, "activity.png"), 0);
+            using (var on = Theme.MakeIcon(false, 64).ToBitmap()) on.Save(Path.Combine(dir, "tray-on.png"));
+            using (var off = Theme.MakeIcon(true, 64).ToBitmap()) off.Save(Path.Combine(dir, "tray-paused.png"));
             Close();
         };
     }

@@ -152,7 +152,7 @@ class DeviceTool(private val context: Context, private val serverInfo: () -> Str
                 (size?.let { " · ${it.first}×${it.second} ${if (it.first > it.second) "landscape" else "portrait"}" } ?: ""),
             "battery $level%${if (charging) " charging" else ""}",
             "network $net",
-            "reach ${BuildConfig.VERSION_NAME} · accessibility ${if (s != null) "on" else "OFF (turn on in Settings › Accessibility › Reach)"}",
+            "reach ${BuildConfig.VERSION_NAME} · accessibility ${if (s != null) "on" else "OFF: " + Access.offHint(context)}",
             serverInfo(),
             "screen control: the agent shares the screen with the user; actions are visible on the phone",
         )

@@ -120,14 +120,35 @@ public sealed class Config
         lock (Gate) { _current = this; _stamp = File.GetLastWriteTimeUtc(PathOf); _checked = DateTime.UtcNow; }
     }
 
-    /// <summary>Full paths of the allowed folders (names like "Documents" mean the user's own).</summary>
+    /// <summary>
+    /// Full paths of the allowed folders. Names like "Documents" mean the user's own, and both copies when OneDrive
+    /// has moved it (OneDrive\Documents as Windows sees it, and C:\Users\me\Documents, which apps still save to).
+    /// </summary>
     public List<string> FolderPaths()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return FileFolders.Select(f => Path.IsPathRooted(f) ? f : f.Equals("Documents", StringComparison.OrdinalIgnoreCase)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
-            : f.Equals("Desktop", StringComparison.OrdinalIgnoreCase) ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-            : Path.Combine(home, f)).ToList();
+        var list = new List<string>();
+        foreach (var f in FileFolders)
+        {
+            if (Path.IsPathRooted(f)) { list.Add(f); continue; }
+            var special = f.ToLowerInvariant() switch
+            {
+                "documents" => Environment.SpecialFolder.MyDocuments,
+                "desktop" => Environment.SpecialFolder.Desktop,
+                "pictures" => Environment.SpecialFolder.MyPictures,
+                "videos" => Environment.SpecialFolder.MyVideos,
+                "music" => Environment.SpecialFolder.MyMusic,
+                _ => (Environment.SpecialFolder?)null,
+            };
+            var plain = Path.Combine(home, f);
+            if (special is { } sp && Environment.GetFolderPath(sp) is { Length: > 0 } real)
+            {
+                list.Add(real);
+                if (!string.Equals(real.TrimEnd('\\'), plain, StringComparison.OrdinalIgnoreCase) && Directory.Exists(plain)) list.Add(plain);
+            }
+            else list.Add(plain);
+        }
+        return list.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>The abilities with a switch, in the order the settings window shows them.</summary>

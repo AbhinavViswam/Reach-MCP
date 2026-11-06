@@ -30,7 +30,7 @@ object ScreenReader {
     const val MAX_LABEL = 120
 
     fun service(): AccessibilityService =
-        Access.service.value ?: throw ToolError("no_access", "turn on Reach in Settings › Accessibility (open the Reach app for a button)")
+        Access.service.value ?: throw ToolError("no_access", Access.offHint(Access.app))
 
     suspend fun read(allWindows: Boolean = false): Live = withContext(thread) {
         val s = service()

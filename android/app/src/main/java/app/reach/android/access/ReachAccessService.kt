@@ -81,6 +81,27 @@ object Access {
 
     fun counts() = EventCounts(any.get(), scrolled.get(), text.get(), windows.get())
 
+    /** Reach is ticked in Settings › Accessibility (whether or not Android is running it right now). */
+    fun enabledInSettings(c: android.content.Context): Boolean {
+        val flat = android.provider.Settings.Secure.getString(c.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+        val me = android.content.ComponentName(c, ReachAccessService::class.java)
+        return flat.split(':').any { android.content.ComponentName.unflattenFromString(it) == me }
+    }
+
+    /**
+     * Why there is no screen access, and the fix. "Stopped" is the case where it is ticked but Android isn't running
+     * it: Android does this when the app is restarted after a permission change (All files access) or force-stopped,
+     * and it only comes back when the user turns it off and on.
+     */
+    fun offHint(c: android.content.Context?): String =
+        if (c != null && enabledInSettings(c))
+            "Android stopped Reach's screen access (it does this after a permission such as All files access changes). " +
+                "The user turns Reach off and on again in Settings › Accessibility"
+        else "turn on Reach in Settings › Accessibility (open the Reach app for a button)"
+
+    /** The app's context, for hints from places that have none. */
+    @Volatile var app: android.content.Context? = null
+
     internal fun attach(s: ReachAccessService) {
         _service.value = s
         s.listen(listening)

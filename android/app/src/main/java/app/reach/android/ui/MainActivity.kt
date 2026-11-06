@@ -119,8 +119,12 @@ private fun Home() {
             // ---------------------------------------------------------------------------------- step 1
             Section("1 · Screen access", ok = access != null, okText = "On", offText = "Off") {
                 Text(
-                    if (access != null) "Reach can read the screen and tap, type and scroll when your agent asks."
-                    else "Turn on Reach in Accessibility. It only reads the screen when your agent asks, and never reads passwords.",
+                    when {
+                        access != null -> "Reach can read the screen and tap, type and scroll when your agent asks."
+                        Access.enabledInSettings(ctx) -> "Android stopped Reach's screen access (this happens after changing a permission " +
+                            "such as All files access). In Accessibility, turn Reach off and on again."
+                        else -> "Turn on Reach in Accessibility. It only reads the screen when your agent asks, and never reads passwords."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (access == null) {

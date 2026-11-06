@@ -63,13 +63,22 @@ object Verdicts {
      * [expectText]: for typing, the text the field should now hold (null when it can't be read back, e.g. a
      * password). [events]: events seen while acting.
      */
+    /** Does a field hold [expect]? Line ends and trailing spaces don't count; null when the value was cut short. */
+    fun sameText(now: String, expect: String): Boolean? {
+        if (now.length > 500 && now.endsWith("…")) return null
+        fun n(s: String) = s.replace("\r\n", "\n").replace('\r', '\n').trimEnd()
+        return n(now) == n(expect)
+    }
+
     fun judge(kind: String, diff: Diff, events: EventCounts, targetId: String?, expectText: String? = null): Verdict {
         val unreadable = diff.from.elements.isEmpty() && diff.to.elements.isEmpty()
         return when (kind) {
             "type", "clear" -> {
                 val now = targetId?.let { diff.to.byId[it] }
+                val held = now?.value
+                val same = if (expectText != null && held != null) sameText(held, expectText) else null
                 when {
-                    expectText != null && now?.value != null -> if (now.value == expectText) Verdict.DONE else Verdict.NO_EFFECT
+                    same != null -> if (same) Verdict.DONE else Verdict.NO_EFFECT
                     events.textChanged > 0 || !diff.isEmpty -> Verdict.DONE
                     else -> Verdict.NO_EFFECT
                 }

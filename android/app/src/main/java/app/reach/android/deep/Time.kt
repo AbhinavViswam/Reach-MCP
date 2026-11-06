@@ -194,7 +194,12 @@ class AlarmsTool(private val c: Context) : Tool {
         }
         "next" -> {
             val next = c.getSystemService(AlarmManager::class.java).nextAlarmClock
-            ToolResult.text(next?.let { "next alarm: ${Deep.time(it.triggerTime)}" } ?: "no alarm set")
+            // Any app can set an alarm clock; say whose it is, so a stranger's alarm isn't taken for the user's.
+            val by = next?.showIntent?.creatorPackage?.let { pkg ->
+                runCatching { c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
+            }
+            ToolResult.text(next?.let { "next alarm: ${Deep.time(it.triggerTime)}" + (by?.let { " (set by $it)" } ?: "") +
+                " · Android tells only the soonest one; alarms show opens the clock app's list" } ?: "no alarm set")
         }
         else -> throw ToolError("bad_args", "action must be set, timer, show or next")
     }

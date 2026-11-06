@@ -28,6 +28,8 @@ public static class Program
     [MTAThread]
     public static async Task<int> Main(string[] args)
     {
+        // A windowed exe has no console of its own. Run from a terminal (--token, --help, --http…), print there.
+        if (!StdHandleUsable(STD_OUTPUT)) AttachConsole(ATTACH_PARENT);
         var has = (string a) => args.Contains(a, StringComparer.OrdinalIgnoreCase);
         var backgroundOnly = has("--background-only");
 
@@ -56,10 +58,9 @@ public static class Program
             var dir = args.SkipWhile(a => !a.Equals("--ui-snapshot", StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault() ?? ".";
             return RunWindow(() => new Ui.Snapshot(dir));
         }
-        if (has("--settings") || (args.Length == 0 && !Console.IsInputRedirected))
+        if (has("--settings") || (args.Length == 0 && !StdinIsPipe()))
         {
-            // Double-clicked: an stdio server on an empty console helps nobody. Show settings instead.
-            HideOwnConsole();
+            // Double-clicked (or started with nothing to talk to): show settings. Agents start Reach with pipes.
             return RunWindow(() => new Ui.SettingsForm());
         }
 
@@ -152,7 +153,7 @@ public static class Program
                 "tailscale" => $" (and your Tailscale devices: http://{Net.TailscaleAddress() ?? "<tailscale address>"}:{server.BoundPort}/mcp)",
                 _ => " (this PC only)",
             };
-            Console.Error.WriteLine($"Reach for Windows {Version} on http://127.0.0.1:{server.BoundPort}/mcp{where} · token: reach.exe --token · Ctrl+C stops");
+            Console.Error.WriteLine($"Reach for Windows {Version} on http://127.0.0.1:{server.BoundPort}/mcp{where} · token: reach.exe --token · stop it from the tray icon (Quit)");
             var quit = new TaskCompletionSource();
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; quit.TrySetResult(); };
             await quit.Task;
@@ -184,19 +185,24 @@ public static class Program
         return code;
     }
 
-    [DllImport("kernel32.dll")] private static extern IntPtr GetConsoleWindow();
-    [DllImport("kernel32.dll")] private static extern uint GetConsoleProcessList(uint[] list, uint count);
-    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr h, int cmd);
+    private const int STD_INPUT = -10, STD_OUTPUT = -11, ATTACH_PARENT = -1;
+    [DllImport("kernel32.dll")] private static extern IntPtr GetStdHandle(int which);
+    [DllImport("kernel32.dll")] private static extern uint GetFileType(IntPtr h);
+    [DllImport("kernel32.dll")] private static extern bool AttachConsole(int pid);
 
-    /// <summary>Hides the console only when it was made just for us (double-click), never a terminal the user typed in.</summary>
-    private static void HideOwnConsole()
+    private static bool StdHandleUsable(int which)
     {
-        try
-        {
-            var h = GetConsoleWindow();
-            if (h != IntPtr.Zero && GetConsoleProcessList(new uint[4], 4) <= 1) ShowWindow(h, 0);
-        }
-        catch { }
+        var h = GetStdHandle(which);
+        return h != IntPtr.Zero && h != new IntPtr(-1) && GetFileType(h) != 0;
+    }
+
+    /// <summary>stdin is a pipe or a file: something (an MCP client) is there to talk to. 3 = pipe, 1 = disk.</summary>
+    private static bool StdinIsPipe()
+    {
+        var h = GetStdHandle(STD_INPUT);
+        if (h == IntPtr.Zero || h == new IntPtr(-1)) return false;
+        var t = GetFileType(h);
+        return t is 3 or 1;
     }
 }
 

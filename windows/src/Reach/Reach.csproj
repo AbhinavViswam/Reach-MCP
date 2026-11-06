@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- A windowed app: double-clicked it shows only the settings window, no terminal. Agents still talk to it over
+         stdio, because they start it with pipes; command-line flags print to the terminal they came from. -->
+    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>Assets\reach.ico</ApplicationIcon>
     <!-- 10.0.19041 = Windows 10 2004: needed later for Windows OCR and notifications (WinRT). -->
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
@@ -19,7 +22,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
-    <!-- DPI awareness is set in app.manifest on purpose: this is a console exe, not a WinForms app. -->
+    <!-- DPI awareness is set in app.manifest on purpose (the same for the server, the worker and the windows). -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
 

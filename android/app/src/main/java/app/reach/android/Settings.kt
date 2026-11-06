@@ -25,6 +25,7 @@ object Settings {
 
     fun init(c: Context) {
         ctx = c.applicationContext
+        app.reach.android.access.Access.app = ctx
         Audit.init(ctx.filesDir)
         Privacy.userRules = loadRules()
         _paused.value = prefs.getBoolean("paused", false)

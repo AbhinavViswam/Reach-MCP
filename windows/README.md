@@ -18,6 +18,10 @@ reach.exe --token           # the token to send as "Authorization: Bearer <token
 claude mcp add --transport http reach-windows http://127.0.0.1:8766/mcp --header "Authorization: Bearer <token>"
 ```
 
+reach.exe is a windowed app: double-clicked it opens only the settings window (no terminal). Agents start it with
+pipes and talk MCP over stdio as before. `reach.exe --http` started from a terminal keeps running in the background with
+the tray icon; stop it with the tray icon's Quit.
+
 Other switches: `--settings`, `--pause`, `--resume`, `--background-only` (never touch the real mouse/keyboard), `--lan` (HTTP on every network),
 `--selftest` (read the front window once and print it; changes nothing).
 

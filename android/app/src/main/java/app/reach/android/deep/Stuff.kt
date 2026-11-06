@@ -227,6 +227,8 @@ class ClipboardTool(private val c: Context) : Tool {
         }
         "get" -> {
             val done = CompletableDeferred<String?>()
+            if (app.reach.android.access.Access.service.value == null)
+                throw ToolError("no_access", "reading the clipboard needs Reach's screen access on this phone: " + app.reach.android.access.Access.offHint(c))
             ClipActivity.waiting = done
             Deep.start(c, Intent(c, ClipActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
             val text = withTimeoutOrNull(5_000) { done.await() }

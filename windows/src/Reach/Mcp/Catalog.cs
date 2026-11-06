@@ -243,11 +243,11 @@ public static class Catalog
         new("undo",
             "Put back changes Reach made on this PC: file writes, moves, copies and deletes, window moves, the clipboard, Excel cells. " +
             "list shows them (sent mail, commands and closed programs are listed as can't undo); last undoes the newest; " +
-            "checkpoint name=… marks a point; to target=u7 or a checkpoint name undoes everything after it. A file changed by someone else since asks the user.",
+            "checkpoint name=… marks a point; to target=u7 undoes u7 itself and everything newer, to target=<checkpoint name> undoes everything after the checkpoint (set one before a task to undo just that task). A file changed by someone else since asks the user.",
             Schema(new JsonObject
             {
                 ["action"] = P("string", "what to do", "list", "last", "to", "checkpoint"),
-                ["target"] = P("string", "to: a change id (u7) or a checkpoint name"),
+                ["target"] = P("string", "to: a change id (u7: that change and every newer one) or a checkpoint name (everything after it)"),
                 ["name"] = P("string", "checkpoint: its name"),
                 ["limit"] = P("integer", "list: how many (default 15)"),
             }), 90_000),

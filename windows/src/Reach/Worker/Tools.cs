@@ -441,25 +441,36 @@ internal sealed class Tools(bool backgroundOnly)
         var canSet = value != null && SafeReadOnly(value) == false;
         if (canSet && (!submit || fgOk))
         {
-            return Judge("type", live, t, what, () =>
+            var bg = Judge("type", live, t, what, () =>
             {
                 value!.SetValue(want);
                 if (submit) { PrepareReal(t.Owner); try { node.SetFocus(); } catch { } Input.Press(0x0D); }
                 return (true, submit ? "set in the background, Enter with the keyboard" : "set in the background");
             }, submit ? null : expect);
+            // Some boxes (Windows 11 Notepad) ignore a background set: one honest retry with the keyboard.
+            if (bg.Verdict != Verdict.NoEffect || !fgOk || submit) return bg;
+            var again = Read();
+            var t2 = t.El != null && again.Snap.ById.ContainsKey(t.El.Id) ? Resolve(again, JsonValue.Create(t.El.Id)) : t;
+            if (t2.Node == null) return bg;
+            // The background set may have half-worked: replace the whole text instead of adding to it.
+            return Keyboard(again, t2, t2.Node, want, append: false, submit: false, what, expect, "the background set changed nothing; ");
         }
         if (!fgOk) return NeedsForeground(live, what);
-        return Judge("type", live, t, what, () =>
+        return Keyboard(live, t, node, text, append, submit, what, submit ? null : expect, "");
+    }
+
+    private Outcome Keyboard(Live live, Target t, IUIAutomationElement node, string text, bool append, bool submit, string what, string? expect, string why) =>
+        Judge("type", live, t, what, () =>
         {
             PrepareReal(t.Owner);
             try { node.SetFocus(); } catch { Input.Click(t.X, t.Y); }
             Thread.Sleep(60);
-            if (!append) { Input.Combo("ctrl+a"); if (text.Length == 0) Input.Press(0x2E); }
+            if (append) Input.Combo("ctrl+end");
+            else { Input.Combo("ctrl+a"); if (text.Length == 0) Input.Press(0x2E); }
             Input.Type(text);
             if (submit) Input.Press(0x0D);
-            return (true, "typed with the keyboard");
+            return (true, why + "typed with the keyboard");
         }, submit ? null : expect);
-    }
 
     private static bool? SafeReadOnly(IUIAutomationValuePattern v)
     {

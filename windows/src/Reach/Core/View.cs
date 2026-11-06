@@ -115,6 +115,17 @@ public static class Verdicts
         _ => "unknown",
     };
 
+    /// <summary>
+    /// Does a field hold [expect]? Line ends don't count (Notepad's box keeps \r, others \r\n), nor spaces at the end.
+    /// Null when the value was cut short when read (long documents): then it can't be told from the value.
+    /// </summary>
+    public static bool? SameText(string now, string expect)
+    {
+        if (now.Length > 500 && now.EndsWith('…')) return null;
+        static string N(string s) => s.Replace("\r\n", "\n").Replace('\r', '\n').TrimEnd();
+        return N(now) == N(expect);
+    }
+
     /// <param name="events">Screen events seen while acting (focus moves, windows opening).</param>
     /// <param name="expectText">For typing: what the field should hold now (null when it can't be read back).</param>
     public static Verdict Judge(string kind, Diff diff, int events, string? targetId, string? expectText = null)
@@ -123,7 +134,7 @@ public static class Verdicts
         if (kind is "type" or "clear")
         {
             var now = targetId != null && diff.To.ById.TryGetValue(targetId, out var e) ? e : null;
-            if (expectText != null && now?.Value != null) return now.Value == expectText ? Verdict.Done : Verdict.NoEffect;
+            if (expectText != null && now?.Value != null && SameText(now.Value, expectText) is bool same) return same ? Verdict.Done : Verdict.NoEffect;
             return !diff.IsEmpty || events > 0 ? Verdict.Done : Verdict.NoEffect;
         }
         if (!diff.IsEmpty) return Verdict.Done;

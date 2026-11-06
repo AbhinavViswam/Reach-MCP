@@ -106,7 +106,13 @@ class ServerService : Service() {
             AppsTool(applicationContext),
             DeviceTool(applicationContext) {
                 "server port $port · ${if (wifi) "USB and Wi-Fi" else if (tailscale) "USB and Tailscale" else "USB only (adb forward)"}\n" +
-                    "abilities: " + Feature.entries.joinToString { f -> "${f.key} ${if (f.ready(applicationContext)) "on" else "off"}" } +
+                    "abilities: " + Feature.entries.joinToString { f ->
+                        "${f.key} " + when {
+                            f == Feature.PC && f.ready(applicationContext) && Settings.pcToken.isBlank() -> "not linked"
+                            f.ready(applicationContext) -> "on"
+                            else -> "off"
+                        }
+                    } +
                     " (the user turns them on in the Reach app; reconnect to see new tools)\n" + (handlerRef?.tokens?.text() ?: "")
             },
             SmsTool(applicationContext), CallsTool(applicationContext), ContactsTool(applicationContext),

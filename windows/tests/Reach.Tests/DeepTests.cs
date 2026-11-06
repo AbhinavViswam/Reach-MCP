@@ -83,3 +83,30 @@ public class DeepTests
         Assert.Contains("browser", listed);
     }
 }
+
+public class TestingRoundFixes
+{
+    [Fact]
+    public void TypedTextIgnoresLineEnds()
+    {
+        Assert.True(Verdicts.SameText("hello\rworld", "hello\nworld"));       // Windows 11 Notepad keeps \r
+        Assert.True(Verdicts.SameText("hello\r\nworld\r\n", "hello\nworld"));
+        Assert.False(Verdicts.SameText("hello", "hello world"));
+        Assert.Null(Verdicts.SameText(new string('a', 500) + "…", "anything")); // cut short when read: can't tell
+    }
+
+    [Fact]
+    public void BothDesktopsCount()
+    {
+        var root = Directory.CreateTempSubdirectory("reach-od").FullName;
+        var oneDrive = Directory.CreateDirectory(Path.Combine(root, "OneDrive", "Desktop")).FullName;
+        var plain = Directory.CreateDirectory(Path.Combine(root, "Desktop")).FullName;
+        File.WriteAllText(Path.Combine(plain, "flowtest.txt"), "hi Ann");
+        var allowed = new[] { oneDrive, plain };
+        // The file is in the plain Desktop: that one wins; a new file goes to the first.
+        Assert.Equal(Path.Combine(plain, "flowtest.txt"), Fence.Resolve(allowed, @"Desktop\flowtest.txt"));
+        Assert.Equal(Path.Combine(oneDrive, "new.txt"), Fence.Resolve(allowed, @"Desktop\new.txt"));
+        Assert.Equal(Path.Combine(plain, "flowtest.txt"), Fence.Resolve(allowed, Path.Combine(plain, "flowtest.txt")));
+        Directory.Delete(root, true);
+    }
+}

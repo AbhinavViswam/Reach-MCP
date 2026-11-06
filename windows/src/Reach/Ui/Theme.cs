@@ -120,31 +120,39 @@ internal static class Theme
         try { DwmSetWindowAttribute(hwnd, 20, ref v, sizeof(int)); } catch { }
     }
 
-    /// <summary>The tray and window icon: a rounded square with an R, grey with two bars while paused.</summary>
+    /// <summary>The exe's own icon (Assets/reach.ico) for windows; the drawn one if it can't be read.</summary>
+    public static Icon AppIcon()
+    {
+        try { if (Environment.ProcessPath is { } p && Icon.ExtractAssociatedIcon(p) is { } i) return i; } catch { }
+        return MakeIcon(false);
+    }
+
+    /// <summary>
+    /// The tray icon, the same design as Reach for Android's app icon (and Assets/reach.ico): a navy rounded square,
+    /// a teal ring open at the top right, a teal dot reaching out of the gap, a white dot in the middle. Paused: the
+    /// teal turns grey. Drawn on Android's 108-unit canvas, of which 18..90 shows.
+    /// </summary>
     public static Icon MakeIcon(bool paused, int size = 32)
     {
         using var bmp = new Bitmap(size, size);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            var r = new RectangleF(1, 1, size - 2, size - 2);
-            using var path = Rounded(r, size / 4f);
-            using var fill = new SolidBrush(paused ? Color.FromArgb(0x8A, 0x8A, 0x8A) : Color.FromArgb(0x00, 0x8C, 0x73));
-            g.FillPath(fill, path);
-            if (paused)
-            {
-                var w = size * 0.14f;
-                var h = size * 0.5f;
-                g.FillRectangle(Brushes.White, size * 0.31f, size * 0.25f, w, h);
-                g.FillRectangle(Brushes.White, size * 0.55f, size * 0.25f, w, h);
-            }
-            else
-            {
-                using var font = new Font("Segoe UI", size * 0.5f, FontStyle.Bold, GraphicsUnit.Pixel);
-                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                g.DrawString("R", font, Brushes.White, new RectangleF(0, size * 0.02f, size, size), sf);
-            }
+            var r = new RectangleF(0.5f, 0.5f, size - 1, size - 1);
+            using var path = Rounded(r, size * 0.22f);
+            using var navy = new SolidBrush(Color.FromArgb(0x0E, 0x1A, 0x2B));
+            g.FillPath(navy, path);
+            var teal = paused ? Color.FromArgb(0x9A, 0xA3, 0xAD) : Color.FromArgb(0x5E, 0xE6, 0xC8);
+            var k = size / 72f;
+            PointF P(float x, float y) => new((x - 18) * k, (y - 18) * k);
+            var c = P(54, 54);
+            var ring = 20 * k;
+            using (var pen = new Pen(teal, 6 * k) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                g.DrawArc(pen, c.X - ring, c.Y - ring, ring * 2, ring * 2, 0, 315);
+            using var dot = new SolidBrush(teal);
+            var d = P(74, 34);
+            g.FillEllipse(dot, d.X - 7 * k, d.Y - 7 * k, 14 * k, 14 * k);
+            g.FillEllipse(Brushes.White, c.X - 5 * k, c.Y - 5 * k, 10 * k, 10 * k);
         }
         var h2 = bmp.GetHicon();
         var icon = (Icon)Icon.FromHandle(h2).Clone();
